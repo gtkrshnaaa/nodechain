@@ -43,7 +43,9 @@ async function applyTx(db, tx, blockIndex) {
       });
       break;
     }
-    case TXK.POST: {
+    case TXK.POST:
+    case TXK.BUZZ:
+    case TXK.POLLEN: {
       const id = tx.id;
       const text = payload.text || '';
       const tags = Array.isArray(payload.tags) ? payload.tags : extractTags(text);

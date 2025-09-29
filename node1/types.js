@@ -2,6 +2,8 @@
 export const TXK = {
   USER_REGISTER: 'user_register',
   POST: 'post',
+  BUZZ: 'buzz',
+  POLLEN: 'pollen',
   FOLLOW: 'follow',
   LIKE: 'like',
 };

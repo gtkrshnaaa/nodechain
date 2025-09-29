@@ -268,10 +268,27 @@ function registerSocialRoutes(app) {
     return { ok: true, id };
   });
 
+  // Pollen endpoints (preferred naming)
+  app.post('/pollen', { schema: { summary: 'Create a pollen (primary name)', body: { type: 'object', required: ['author', 'text'], properties: { author: { type: 'string' }, text: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } } }, response: { 200: { type: 'object' } } } }, async (req) => {
+    const { author, text, tags } = req.body;
+    const id = crypto.randomUUID();
+    const content = JSON.stringify(makeTx(TXK.POLLEN, { text, tags }, author));
+    await addTx(db, { id, from: author, to: 'posts', content, timestamp: Date.now() });
+    return { ok: true, id };
+  });
+
   app.post('/reply', { schema: { summary: 'Reply to a post', body: { type: 'object', required: ['author', 'text', 'parentId'], properties: { author: { type: 'string' }, text: { type: 'string' }, parentId: { type: 'string' } } }, response: { 200: { type: 'object' } } } }, async (req) => {
     const { author, text, parentId } = req.body;
     const id = crypto.randomUUID();
     const content = JSON.stringify(makeTx(TXK.POST, { text, parentId }, author));
+    await addTx(db, { id, from: author, to: 'posts', content, timestamp: Date.now() });
+    return { ok: true, id };
+  });
+
+  app.post('/pollen/reply', { schema: { summary: 'Reply to a pollen (primary name)', body: { type: 'object', required: ['author', 'text', 'parentId'], properties: { author: { type: 'string' }, text: { type: 'string' }, parentId: { type: 'string' } } }, response: { 200: { type: 'object' } } } }, async (req) => {
+    const { author, text, parentId } = req.body;
+    const id = crypto.randomUUID();
+    const content = JSON.stringify(makeTx(TXK.POLLEN, { text, parentId }, author));
     await addTx(db, { id, from: author, to: 'posts', content, timestamp: Date.now() });
     return { ok: true, id };
   });
@@ -300,6 +317,13 @@ function registerSocialRoutes(app) {
   });
 
   app.get('/user/:handle/posts', { schema: { summary: 'Get posts by user', querystring: { type: 'object', properties: { limit: { type: 'integer', default: 20 }, offset: { type: 'integer', default: 0 } } }, response: { 200: { type: 'object' } } } }, async (req) => {
+    const { handle } = req.params;
+    const { limit = 20, offset = 0 } = req.query;
+    const posts = await getUserPosts(db, handle, { limit, offset });
+    return { ok: true, posts };
+  });
+
+  app.get('/user/:handle/pollens', { schema: { summary: 'Get pollens by user (primary name)', querystring: { type: 'object', properties: { limit: { type: 'integer', default: 20 }, offset: { type: 'integer', default: 0 } } }, response: { 200: { type: 'object' } } } }, async (req) => {
     const { handle } = req.params;
     const { limit = 20, offset = 0 } = req.query;
     const posts = await getUserPosts(db, handle, { limit, offset });
