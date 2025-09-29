@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NodeChain Documentation</title>
-  <meta name="description" content="NodeChain: a minimal blockchain-like simulation using Fastify, SQLite, and Swagger." />
+  <title>NodeChain • Decentralized Blockchain Backend</title>
+  <meta name="description" content="NodeChain: a real decentralized blockchain backend for a Twitter/Threads-like social platform using Fastify, SQLite, and Swagger." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23000000'/%3E%3Ctext x='50' y='60' font-size='54' fill='%23ffffff' text-anchor='middle' font-family='monospace'%3EN%3C/text%3E%3C/svg%3E" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -29,7 +29,7 @@
     <section class="mb-10">
       <div class="box p-4">
         <h2 class="text-2xl font-semibold mono mb-3">Overview</h2>
-        <p class="mb-3">NodeChain is a lightweight blockchain-style simulation intended for learning and experimentation. It treats a sequence of messages (like thread posts) as transactions, groups them into blocks via a simple Proof-of-Work (PoW) with a <span class="mono">0000</span> hash prefix requirement, and persists state in SQLite.</p>
+        <p class="mb-3">NodeChain is a real decentralized blockchain backend for a Twitter/Threads-like social platform. Social actions (posts, replies, follows, likes) are modeled as transactions, grouped into blocks via a simple Proof-of-Work (PoW, leading <span class="mono">0000</span>), and replicated across nodes via gossip and anti-entropy sync. Each node is self-contained (own DB + APIs).</p>
         <ul class="list-disc pl-6">
           <li><strong>Backend-only</strong> with Fastify.</li>
           <li><strong>Data</strong> stored in SQLite files per node.</li>
@@ -37,6 +37,62 @@
           <li><strong>P2P (HTTP)</strong> for broadcasting and syncing blocks between nodes.</li>
         </ul>
         <p class="mt-3"><strong>Decentralization model.</strong> There is no central entry point. Each node is self-contained and equivalent, holding its own database and API surface, and communicating via gossip and periodic anti-entropy sync.</p>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">End-to-End Walkthrough (Social)</h2>
+      <div class="box p-4 space-y-3">
+        <p class="text-sm">The following example demonstrates a full flow across two nodes (node1 at 3001, node2 at 3002).</p>
+        <ol class="list-decimal pl-6 space-y-2 text-sm">
+          <li>Register users:</li>
+        </ol>
+        <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3001/users/register \
+  -H 'content-type: application/json' \
+  -d '{"handle":"alice","displayName":"Alice"}'
+
+curl -X POST http://localhost:3002/users/register \
+  -H 'content-type: application/json' \
+  -d '{"handle":"bob","displayName":"Bob"}'</pre>
+        <ol start="2" class="list-decimal pl-6 space-y-2 text-sm">
+          <li>Create a post on node1 and mine:</li>
+        </ol>
+        <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3001/post \
+  -H 'content-type: application/json' \
+  -d '{"author":"alice","text":"Hello #NodeChain"}'
+
+curl -X POST http://localhost:3001/mine</pre>
+        <ol start="3" class="list-decimal pl-6 space-y-2 text-sm">
+          <li>Bob follows Alice on node2, then mine:</li>
+        </ol>
+        <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3002/follow \
+  -H 'content-type: application/json' \
+  -d '{"follower":"bob","followee":"alice"}'
+
+curl -X POST http://localhost:3002/mine</pre>
+        <ol start="4" class="list-decimal pl-6 space-y-2 text-sm">
+          <li>View Bob's timeline on node2:</li>
+        </ol>
+        <pre class="box p-3 mono text-sm overflow-auto">curl http://localhost:3002/timeline/bob</pre>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Signed Transaction Example (Optional)</h2>
+      <div class="box p-4 space-y-3 text-sm">
+        <p>Submit a signed transaction with Ed25519 signature. The server verifies the signature against the canonical digest of the tx core fields.</p>
+        <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3001/tx/signed \
+  -H 'content-type: application/json' \
+  -d '{
+    "id":"<uuid>",
+    "from":"alice",
+    "to":"posts",
+    "content":"{\"kind\":\"post\",\"author\":\"alice\",\"payload\":{\"text\":\"Signed hello\"}}",
+    "timestamp":1690000000000,
+    "pubkey":"<hex-ed25519-pubkey>",
+    "signature":"<hex-ed25519-signature>"
+  }'</pre>
+        <p>On success the node will accept the tx, add it to the mempool, and gossip it to peers.</p>
       </div>
     </section>
 
@@ -82,9 +138,9 @@ package.json
           </ul>
         </div>
         <div class="box p-4">
-          <h3 class="text-xl font-semibold mono mb-2">Transactions (Thread Messages)</h3>
+          <h3 class="text-xl font-semibold mono mb-2">Transactions (Social Actions)</h3>
           <ul class="list-disc pl-6">
-            <li>Transactions represent messages: <span class="mono">{ id, from, to, content, timestamp }</span>.</li>
+            <li>Transactions represent social actions: <span class="mono">{ id, from, to, content, timestamp }</span>.</li>
             <li>They accumulate in the mempool until mined into a block.</li>
             <li>After a block is mined, included mempool entries are cleared.</li>
           </ul>
@@ -235,10 +291,10 @@ timestamp INTEGER</pre>
       <div class="box p-4">
         <ul class="list-disc pl-6">
           <li><strong>Block validation.</strong> A candidate block must increment <span class="mono">index</span> by 1, reference the predecessor's <span class="mono">hash</span> in <span class="mono">prevHash</span>, and recompute to the same <span class="mono">hash</span> under the configured PoW target.</li>
-          <li><strong>Mempool integrity.</strong> Transactions are accepted as-is without signatures; this simplifies the demo but implies no provenance or authorization model.</li>
-          <li><strong>Adversarial behavior.</strong> There is no Sybil resistance, slashing, or punishment for invalid broadcasts. Malicious peers can attempt to spam or fork.</li>
+          <li><strong>Mempool integrity.</strong> Unsigned transactions are accepted by default for simplicity. For stronger integrity, use <span class="mono">POST /tx/signed</span> (Ed25519 verification).</li>
+          <li><strong>Adversarial behavior.</strong> No Sybil resistance or slashing; rate limiting and peer allowlists are recommended for untrusted networks.</li>
           <li><strong>Forks & reorgs.</strong> The system does not implement fork-choice rules. If divergent histories appear, manual intervention (e.g., resetting DBs) may be needed.</li>
-          <li><strong>Transport security.</strong> HTTP is plaintext; for real deployments, serve over TLS and restrict peer lists to trusted hosts.</li>
+          <li><strong>Transport security.</strong> HTTP is plaintext; for real deployments, serve over TLS, authenticate peers, and restrict peer lists to trusted hosts.</li>
           <li><strong>Resource isolation.</strong> Each node uses its own SQLite file, preventing cross-node interference but not protecting against local disk corruption.</li>
         </ul>
       </div>
@@ -290,11 +346,11 @@ timestamp INTEGER</pre>
       <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Limitations & Future Work</h2>
       <div class="box p-4">
         <ul class="list-disc pl-6">
-          <li><strong>Signatures & identity.</strong> Introduce digital signatures (e.g., secp256k1) to authenticate transaction authors.</li>
-          <li><strong>Fork choice.</strong> Implement longest-chain, GHOST, or similar rules for conflict resolution.</li>
-          <li><strong>Networking.</strong> Replace ad-hoc HTTP with a gossip protocol and peer discovery.</li>
-          <li><strong>Economic layer.</strong> Add fees/rewards and basic accounting to study incentive compatibility.</li>
-          <li><strong>Storage pruning.</strong> Support snapshotting or pruning for long-running chains.</li>
+          <li><strong>Identity model.</strong> Expand signature usage (mandatory paths, key management, rotation).</li>
+          <li><strong>Fork choice.</strong> Add chain selection rules (e.g., longest-chain, GHOST).</li>
+          <li><strong>Networking.</strong> Introduce richer peer discovery and authenticated gossip.</li>
+          <li><strong>Economic layer.</strong> Add fees/rewards and balances for incentive compatibility.</li>
+          <li><strong>Storage pruning.</strong> Snapshots or pruning for long-running chains.</li>
         </ul>
       </div>
     </section>
