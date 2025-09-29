@@ -1,0 +1,6 @@
+{
+  "watch": ["src", "shared", "node1", "node2"],
+  "ext": "js,json",
+  "ignore": ["**/*.db", "**/*.sqlite", "node_modules"],
+  "exec": "node"
+}

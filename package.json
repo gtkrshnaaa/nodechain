@@ -1,0 +1,23 @@
+{
+  "name": "nodechain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lightweight blockchain thread-like simulation with Fastify, SQLite, Swagger",
+  "scripts": {
+    "start:node1": "node node1/index.js",
+    "start:node2": "node node2/index.js",
+    "dev:node1": "nodemon node1/index.js",
+    "dev:node2": "nodemon node2/index.js"
+  },
+  "dependencies": {
+    "@fastify/swagger": "^8.14.0",
+    "@fastify/swagger-ui": "^3.0.1",
+    "fastify": "^4.28.1",
+    "sqlite3": "^5.1.7",
+    "undici": "^6.19.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}

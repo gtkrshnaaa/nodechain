@@ -1,0 +1,8 @@
+{
+  "port": 3001,
+  "dbPath": "data/node1.sqlite",
+  "difficulty": 4,
+  "peers": [
+    "http://localhost:3002"
+  ]
+}
