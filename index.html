@@ -23,13 +23,13 @@
   <div class="page p-4 sm:p-8">
     <header class="mb-8 text-center">
       <h1 class="text-3xl sm:text-4xl font-bold mono section-title inline-block pb-2">NodeChain Documentation</h1>
-      <div class="mt-2 text-sm text-zinc-600">Fastify + SQLite + Swagger • Minimal blockchain-like simulation</div>
+      <div class="mt-2 text-sm text-zinc-600">Fastify + SQLite + Swagger • Real decentralized blockchain backend for social</div>
     </header>
 
     <section class="mb-10">
       <div class="box p-4">
         <h2 class="text-2xl font-semibold mono mb-3">Overview</h2>
-        <p class="mb-3">NodeChain is a real decentralized blockchain backend for a Twitter/Threads-like social platform. Social actions (posts, replies, follows, likes) are modeled as transactions, grouped into blocks via a simple Proof-of-Work (PoW, leading <span class="mono">0000</span>), and replicated across nodes via gossip and anti-entropy sync. Each node is self-contained (own DB + APIs).</p>
+        <p class="mb-3">NodeChain is a real decentralized blockchain backend for a Twitter/Threads-like social platform. Social actions (<strong>Pollen</strong>, replies, follows, likes) are modeled as transactions, grouped into blocks via a simple Proof-of-Work (PoW, leading <span class="mono">0000</span>), and replicated across nodes via gossip and anti-entropy sync. Each node is self-contained (own DB + APIs).</p>
         <ul class="list-disc pl-6">
           <li><strong>Backend-only</strong> with Fastify.</li>
           <li><strong>Data</strong> stored in SQLite files per node.</li>
@@ -41,7 +41,7 @@
     </section>
 
     <section class="mb-10">
-      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">End-to-End Walkthrough (Social)</h2>
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">End-to-End Walkthrough (Social • Pollen)</h2>
       <div class="box p-4 space-y-3">
         <p class="text-sm">The following example demonstrates a full flow across two nodes (node1 at 3001, node2 at 3002).</p>
         <ol class="list-decimal pl-6 space-y-2 text-sm">
@@ -55,11 +55,11 @@ curl -X POST http://localhost:3002/users/register \
   -H 'content-type: application/json' \
   -d '{"handle":"bob","displayName":"Bob"}'</pre>
         <ol start="2" class="list-decimal pl-6 space-y-2 text-sm">
-          <li>Create a post on node1 and mine:</li>
+          <li>Create a pollen on node1 and mine:</li>
         </ol>
-        <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3001/post \
+        <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3001/pollen \
   -H 'content-type: application/json' \
-  -d '{"author":"alice","text":"Hello #NodeChain"}'
+  -d '{"author":"alice","text":"Hello #Pollen"}'
 
 curl -X POST http://localhost:3001/mine</pre>
         <ol start="3" class="list-decimal pl-6 space-y-2 text-sm">
@@ -87,7 +87,7 @@ curl -X POST http://localhost:3002/mine</pre>
     "id":"<uuid>",
     "from":"alice",
     "to":"posts",
-    "content":"{\"kind\":\"post\",\"author\":\"alice\",\"payload\":{\"text\":\"Signed hello\"}}",
+    "content":"{\"kind\":\"pollen\",\"author\":\"alice\",\"payload\":{\"text\":\"Signed hello\"}}",
     "timestamp":1690000000000,
     "pubkey":"<hex-ed25519-pubkey>",
     "signature":"<hex-ed25519-signature>"
@@ -106,7 +106,7 @@ curl -X POST http://localhost:3002/mine</pre>
   blockchain.js    # genesis, mining, block validation
   p2p.js           # HTTP gossip + sync helpers
   projection.js    # apply blocks to social tables
-  types.js         # social tx enums
+  types.js         # TX kinds (USER_REGISTER, POLLEN, ...)
   crypto.js        # canonical hash/signature verify (Ed25519)
   node.config.json # config (port, db path, peers)
 node2/
@@ -140,7 +140,7 @@ package.json
         <div class="box p-4">
           <h3 class="text-xl font-semibold mono mb-2">Transactions (Social Actions)</h3>
           <ul class="list-disc pl-6">
-            <li>Transactions represent social actions: <span class="mono">{ id, from, to, content, timestamp }</span>.</li>
+            <li>Transactions represent social actions (Pollen, replies, follows, likes): <span class="mono">{ id, from, to, content, timestamp }</span>.</li>
             <li>They accumulate in the mempool until mined into a block.</li>
             <li>After a block is mined, included mempool entries are cleared.</li>
           </ul>
@@ -210,8 +210,8 @@ package.json
             <tr><td class="mono">GET</td><td class="mono">/blocks?fromHeight=N</td><td>Get blocks after N (for peer sync).</td></tr>
             <tr><td class="mono">POST</td><td class="mono">/receive-block</td><td>Compatibility path to accept a block.</td></tr>
             <tr><td class="mono">POST</td><td class="mono">/sync</td><td>Pull missing blocks from peers.</td></tr>
-            <tr><td class="mono">POST</td><td class="mono">/gossip/tx</td><td>Receive gossiped transaction, re-gossip if unseen.</td></tr>
-            <tr><td class="mono">POST</td><td class="mono">/gossip/block</td><td>Receive gossiped block, validate, re-gossip if valid.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/gossip/tx</td><td>Receive gossiped transaction (or envelope), re-gossip if unseen (TTL decremented).</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/gossip/block</td><td>Receive gossiped block (or envelope), validate and re-gossip (TTL decremented).</td></tr>
           </tbody>
         </table>
         <div class="mt-4">
@@ -296,6 +296,27 @@ timestamp INTEGER</pre>
           <li><strong>Forks & reorgs.</strong> The system does not implement fork-choice rules. If divergent histories appear, manual intervention (e.g., resetting DBs) may be needed.</li>
           <li><strong>Transport security.</strong> HTTP is plaintext; for real deployments, serve over TLS, authenticate peers, and restrict peer lists to trusted hosts.</li>
           <li><strong>Resource isolation.</strong> Each node uses its own SQLite file, preventing cross-node interference but not protecting against local disk corruption.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">API (Social • Primary vs Compatibility)</h2>
+      <div class="box p-4 text-sm">
+        <ul class="list-disc pl-6">
+          <li><strong>Primary.</strong> <span class="mono">POST /pollen</span>, <span class="mono">POST /pollen/reply</span>, <span class="mono">GET /user/:handle/pollens</span>.</li>
+          <li><strong>Compatibility.</strong> <span class="mono">POST /post</span>, <span class="mono">POST /reply</span>, <span class="mono">GET /user/:handle/posts</span>.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Glossary</h2>
+      <div class="box p-4 text-sm">
+        <ul class="list-disc pl-6">
+          <li><strong>Pollen.</strong> Primary content item (formerly “Post”).</li>
+          <li><strong>Envelope.</strong> Gossip wrapper with TTL and message ID for dedup.</li>
+          <li><strong>Projection.</strong> Deterministic SQL mutation from block transactions.</li>
         </ul>
       </div>
     </section>
