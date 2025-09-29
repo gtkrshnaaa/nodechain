@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NodeChain Documentation</title>
+  <meta name="description" content="NodeChain: a minimal blockchain-like simulation using Fastify, SQLite, and Swagger." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23000000'/%3E%3Ctext x='50' y='60' font-size='54' fill='%23ffffff' text-anchor='middle' font-family='monospace'%3EN%3C/text%3E%3C/svg%3E" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Old-school feel: borders, monospace headings, limited width */
+    .page { max-width: 980px; margin: 0 auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .section-title { border-bottom: 4px double #111; }
+    .box { border: 1px solid #111; background: #fafafa; }
+    .old-table th, .old-table td { border: 1px solid #111; padding: 8px; }
+    .old-table { border-collapse: collapse; width: 100%; }
+    .kbd { border: 1px solid #333; padding: 0 6px; border-radius: 3px; background: #eee; }
+  </style>
+</head>
+<body class="bg-white text-zinc-900">
+  <div class="page p-4 sm:p-8">
+    <header class="mb-8 text-center">
+      <h1 class="text-3xl sm:text-4xl font-bold mono section-title inline-block pb-2">NodeChain Documentation</h1>
+      <div class="mt-2 text-sm text-zinc-600">Fastify + SQLite + Swagger • Minimal blockchain-like simulation</div>
+    </header>
+
+    <section class="mb-10">
+      <div class="box p-4">
+        <h2 class="text-2xl font-semibold mono mb-3">Overview</h2>
+        <p class="mb-3">NodeChain is a lightweight blockchain-style simulation intended for learning and experimentation. It treats a sequence of messages (like thread posts) as transactions, groups them into blocks via a simple Proof-of-Work (PoW) with a <span class="mono">0000</span> hash prefix requirement, and persists state in SQLite.</p>
+        <ul class="list-disc pl-6">
+          <li><strong>Backend-only</strong> with Fastify.</li>
+          <li><strong>Data</strong> stored in SQLite files per node.</li>
+          <li><strong>Swagger UI</strong> served at <span class="mono">/docs</span> for each node.</li>
+          <li><strong>P2P (HTTP)</strong> for broadcasting and syncing blocks between nodes.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Project Layout</h2>
+      <pre class="box p-4 overflow-auto text-sm mono">shared/
+  util.js          # hash (sha256), PoW mining helper, time utils
+  db.js            # sqlite schema + queries (blocks, mempool)
+  blockchain.js    # genesis, mining, block validation
+  p2p.js           # simple HTTP broadcast + sync helpers
+src/
+  createServer.js  # Fastify server, routes, swagger setup
+node1/
+  index.js         # entry for node1
+  node.config.json # config (port, db path, peers)
+node2/
+  index.js         # entry for node2
+  node.config.json # config (port, db path, peers)
+README.md
+index.html         # this documentation
+package.json
+</pre>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">How It Works</h2>
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="box p-4">
+          <h3 class="text-xl font-semibold mono mb-2">Blocks & PoW</h3>
+          <ul class="list-disc pl-6">
+            <li>Each block contains: <span class="mono">index</span>, <span class="mono">timestamp</span>, <span class="mono">prevHash</span>, <span class="mono">nonce</span>, <span class="mono">txs</span>, <span class="mono">hash</span>.</li>
+            <li>Hash is computed over block content; mining searches a <span class="mono">nonce</span> so the hash starts with <span class="mono">0000</span>.</li>
+            <li>Genesis block is created automatically if the chain is empty.</li>
+          </ul>
+        </div>
+        <div class="box p-4">
+          <h3 class="text-xl font-semibold mono mb-2">Transactions (Thread Messages)</h3>
+          <ul class="list-disc pl-6">
+            <li>Transactions represent messages: <span class="mono">{ id, from, to, content, timestamp }</span>.</li>
+            <li>They accumulate in the mempool until mined into a block.</li>
+            <li>After a block is mined, included mempool entries are cleared.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Running Multiple Nodes</h2>
+      <div class="box p-4 space-y-3">
+        <p>Two sample nodes are configured:</p>
+        <table class="old-table text-sm">
+          <thead class="bg-zinc-100">
+            <tr>
+              <th>Node</th>
+              <th>Port</th>
+              <th>DB Path</th>
+              <th>Peers</th>
+              <th>Docs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>node1</td>
+              <td class="mono">3001</td>
+              <td class="mono">data/node1.sqlite</td>
+              <td class="mono"><a class="underline" href="http://localhost:3002" target="_blank" rel="noreferrer">http://localhost:3002</a></td>
+              <td><a class="underline" href="http://localhost:3001/docs" target="_blank" rel="noreferrer">/docs</a></td>
+            </tr>
+            <tr>
+              <td>node2</td>
+              <td class="mono">3002</td>
+              <td class="mono">data/node2.sqlite</td>
+              <td class="mono"><a class="underline" href="http://localhost:3001" target="_blank" rel="noreferrer">http://localhost:3001</a></td>
+              <td><a class="underline" href="http://localhost:3002/docs" target="_blank" rel="noreferrer">/docs</a></td>
+            </tr>
+          </tbody>
+        </table>
+        <div>
+          <p class="mono text-sm">Terminal A:</p>
+          <pre class="box p-3 mono text-sm overflow-auto">npm run dev:node1</pre>
+          <p class="mono text-sm">Terminal B:</p>
+          <pre class="box p-3 mono text-sm overflow-auto">npm run dev:node2</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">API Endpoints</h2>
+      <div class="box p-4">
+        <p>Swagger UI is available on each node at <span class="mono">/docs</span>. Core endpoints:</p>
+        <table class="old-table text-sm mt-3">
+          <thead class="bg-zinc-100">
+            <tr>
+              <th>Method</th><th>Path</th><th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">GET</td><td class="mono">/health</td><td>Health check.</td></tr>
+            <tr><td class="mono">GET</td><td class="mono">/chain</td><td>Full chain.</td></tr>
+            <tr><td class="mono">GET</td><td class="mono">/mempool</td><td>Current mempool transactions.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/tx</td><td>Add a transaction: <span class="mono">{ from, to, content }</span>.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/mine</td><td>Mine a block from mempool, broadcast to peers.</td></tr>
+            <tr><td class="mono">GET</td><td class="mono">/peers</td><td>List peers.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/peers</td><td>Add peer: <span class="mono">{ url }</span>.</td></tr>
+            <tr><td class="mono">GET</td><td class="mono">/blocks?fromHeight=N</td><td>Get blocks after N (for peer sync).</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/receive-block</td><td>Internal: accept a new block from a peer.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/sync</td><td>Pull missing blocks from peers.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Walkthrough</h2>
+      <ol class="list-decimal pl-6 space-y-2">
+        <li><strong>Add a transaction</strong> to node1:</li>
+      </ol>
+      <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3001/tx \ 
+  -H 'content-type: application/json' \ 
+  -d '{"from":"alice","to":"thread-1","content":"hello world"}'
+</pre>
+      <ol start="2" class="list-decimal pl-6 space-y-2">
+        <li><strong>Mine</strong> a new block on node1 (PoW target <span class="mono">0000</span>):</li>
+      </ol>
+      <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3001/mine</pre>
+      <ol start="3" class="list-decimal pl-6 space-y-2">
+        <li>Inspect the <strong>chain</strong> on both nodes:</li>
+      </ol>
+      <pre class="box p-3 mono text-sm overflow-auto">curl http://localhost:3001/chain
+curl http://localhost:3002/chain</pre>
+      <ol start="4" class="list-decimal pl-6 space-y-2">
+        <li>If node2 did not receive the broadcast, manually <strong>sync</strong>:</li>
+      </ol>
+      <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3002/sync</pre>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Data Model</h2>
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="box p-4">
+          <h3 class="text-lg font-semibold mono mb-2">blocks (SQLite)</h3>
+          <pre class="mono text-sm overflow-auto">height INTEGER PRIMARY KEY
+hash TEXT NOT NULL
+prevHash TEXT
+timestamp INTEGER NOT NULL
+nonce INTEGER NOT NULL
+txs TEXT NOT NULL  -- JSON array</pre>
+        </div>
+        <div class="box p-4">
+          <h3 class="text-lg font-semibold mono mb-2">mempool (SQLite)</h3>
+          <pre class="mono text-sm overflow-auto">id TEXT PRIMARY KEY
+sender TEXT
+recipient TEXT
+content TEXT
+timestamp INTEGER</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Validation & Security Notes</h2>
+      <div class="box p-4">
+        <ul class="list-disc pl-6">
+          <li>New block validation checks: sequential <span class="mono">index</span>, matching <span class="mono">prevHash</span>, recomputed <span class="mono">hash</span>, and PoW prefix <span class="mono">0000</span>.</li>
+          <li>No signatures or accounts: this is a learning tool, not production-grade.</li>
+          <li>No fork resolution: longest chain or conflict resolution is intentionally simplified.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Troubleshooting</h2>
+      <div class="box p-4">
+        <ul class="list-disc pl-6">
+          <li><strong>Mining too slow?</strong> Reduce difficulty in <span class="mono">nodeX/node.config.json</span>.</li>
+          <li><strong>Broadcast failed?</strong> Ensure peers list each other and both nodes are running.</li>
+          <li><strong>Empty mempool?</strong> Add transactions before mining.</li>
+          <li><strong>DB locked on Linux?</strong> Use separate terminals; SQLite has file-level locking.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">References</h2>
+      <div class="grid md:grid-cols-2 gap-6 text-sm">
+        <div class="box p-4">
+          <h3 class="font-semibold mono mb-2">Local Docs</h3>
+          <ul class="list-disc pl-6">
+            <li><a class="underline" href="http://localhost:3001/docs" target="_blank" rel="noreferrer">Node1 Swagger</a></li>
+            <li><a class="underline" href="http://localhost:3002/docs" target="_blank" rel="noreferrer">Node2 Swagger</a></li>
+          </ul>
+        </div>
+        <div class="box p-4">
+          <h3 class="font-semibold mono mb-2">Source Files</h3>
+          <ul class="list-disc pl-6">
+            <li><span class="mono">src/createServer.js</span></li>
+            <li><span class="mono">shared/blockchain.js</span></li>
+            <li><span class="mono">shared/db.js</span></li>
+            <li><span class="mono">shared/p2p.js</span></li>
+            <li><span class="mono">shared/util.js</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <footer class="text-center text-xs text-zinc-600 py-6 border-t border-zinc-300">
+      <div>NodeChain • Old-school HTML with a touch of Tailwind utilities</div>
+      <div class="mt-1">© 2025. For learning purposes only.</div>
+    </footer>
+  </div>
+</body>
+</html>
