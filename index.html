@@ -125,7 +125,7 @@ package.json
     <section class="mb-10">
       <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">API Endpoints</h2>
       <div class="box p-4">
-        <p>Swagger UI is available on each node at <span class="mono">/docs</span>. Core endpoints:</p>
+        <p>Swagger UI is available on each node at <span class="mono">/docs</span>. The API adheres to simple JSON request/response semantics. Below is a high-level index; consult Swagger for exhaustive schemas.</p>
         <table class="old-table text-sm mt-3">
           <thead class="bg-zinc-100">
             <tr>
@@ -145,6 +145,15 @@ package.json
             <tr><td class="mono">POST</td><td class="mono">/sync</td><td>Pull missing blocks from peers.</td></tr>
           </tbody>
         </table>
+        <div class="mt-4">
+          <h3 class="text-lg font-semibold mono mb-2">Request/Response Conventions</h3>
+          <ul class="list-disc pl-6 text-sm">
+            <li><strong>Content type.</strong> <span class="mono">application/json</span> for all POST bodies.</li>
+            <li><strong>Success envelope.</strong> Most mutating operations return <span class="mono">{ ok: true, ... }</span>. Errors use HTTP <span class="mono">4xx/5xx</span> with a JSON <span class="mono">error</span> field.</li>
+            <li><strong>Deterministic fields.</strong> Timestamps are Unix epoch milliseconds. Hashes are hex-encoded SHA-256.</li>
+            <li><strong>Pagination/Slice.</strong> Sync endpoints accept <span class="mono">fromHeight</span> to incrementally pull new blocks.</li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -170,6 +179,19 @@ curl http://localhost:3002/chain</pre>
         <li>If node2 did not receive the broadcast, manually <strong>sync</strong>:</li>
       </ol>
       <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3002/sync</pre>
+      <ol start="5" class="list-decimal pl-6 space-y-2">
+        <li><strong>Post additional messages</strong> and observe mempool growth prior to mining:</li>
+      </ol>
+      <pre class="box p-3 mono text-sm overflow-auto">curl -X POST http://localhost:3002/tx \
+  -H 'content-type: application/json' \
+  -d '{"from":"bob","to":"thread-1","content":"reply to alice"}'
+curl http://localhost:3002/mempool</pre>
+      <ol start="6" class="list-decimal pl-6 space-y-2">
+        <li><strong>Reduce difficulty</strong> for quicker experiments (edit <span class="mono">node2/node.config.json</span>), restart node2, then mine again.</li>
+      </ol>
+      <ol start="7" class="list-decimal pl-6 space-y-2">
+        <li><strong>Consistency check.</strong> Verify that <span class="mono">prevHash</span> of each block matches the <span class="mono">hash</span> of its predecessor and that hashes start with the required prefix.</li>
+      </ol>
     </section>
 
     <section class="mb-10">
@@ -199,9 +221,42 @@ timestamp INTEGER</pre>
       <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Validation & Security Notes</h2>
       <div class="box p-4">
         <ul class="list-disc pl-6">
-          <li>New block validation checks: sequential <span class="mono">index</span>, matching <span class="mono">prevHash</span>, recomputed <span class="mono">hash</span>, and PoW prefix <span class="mono">0000</span>.</li>
-          <li>No signatures or accounts: this is a learning tool, not production-grade.</li>
-          <li>No fork resolution: longest chain or conflict resolution is intentionally simplified.</li>
+          <li><strong>Block validation.</strong> A candidate block must increment <span class="mono">index</span> by 1, reference the predecessor's <span class="mono">hash</span> in <span class="mono">prevHash</span>, and recompute to the same <span class="mono">hash</span> under the configured PoW target.</li>
+          <li><strong>Mempool integrity.</strong> Transactions are accepted as-is without signatures; this simplifies the demo but implies no provenance or authorization model.</li>
+          <li><strong>Adversarial behavior.</strong> There is no Sybil resistance, slashing, or punishment for invalid broadcasts. Malicious peers can attempt to spam or fork.</li>
+          <li><strong>Forks & reorgs.</strong> The system does not implement fork-choice rules. If divergent histories appear, manual intervention (e.g., resetting DBs) may be needed.</li>
+          <li><strong>Transport security.</strong> HTTP is plaintext; for real deployments, serve over TLS and restrict peer lists to trusted hosts.</li>
+          <li><strong>Resource isolation.</strong> Each node uses its own SQLite file, preventing cross-node interference but not protecting against local disk corruption.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Consensus Model (Simplified)</h2>
+      <div class="box p-4">
+        <p>This prototype adopts a minimal Proof-of-Work requirement (hash prefix) to illustrate computational work as a gating function for block production. There is no dynamic difficulty adjustment, chain selection, or reward distribution. The goal is to surface the interplay between mempool, hashing, and append-only storage without extraneous complexity.</p>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Networking Protocol</h2>
+      <div class="box p-4">
+        <ul class="list-disc pl-6">
+          <li><strong>Broadcast path.</strong> After mining, a node POSTs the full block JSON to peers' <span class="mono">/receive-block</span>. Peers validate before persisting.</li>
+          <li><strong>Pull-based sync.</strong> Nodes can request ranges via <span class="mono">GET /blocks?fromHeight=N</span>. This is used by <span class="mono">POST /sync</span> to catch up opportunistically.</li>
+          <li><strong>Peer management.</strong> Peers are configured statically at startup (and can be added at runtime). There is no discovery or gossip protocol.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Performance & Tuning</h2>
+      <div class="box p-4">
+        <ul class="list-disc pl-6">
+          <li><strong>Difficulty.</strong> Lower the number of leading zeros to accelerate mining during development.</li>
+          <li><strong>Batching.</strong> Accumulate more transactions in the mempool before mining to amortize PoW costs per block.</li>
+          <li><strong>I/O locality.</strong> SQLite performs well for append-heavy workloads; ensure the DB file resides on a local SSD for best results.</li>
+          <li><strong>Logging.</strong> Fastify logger is enabled; reduce verbosity if I/O-bound.</li>
         </ul>
       </div>
     </section>
@@ -214,6 +269,19 @@ timestamp INTEGER</pre>
           <li><strong>Broadcast failed?</strong> Ensure peers list each other and both nodes are running.</li>
           <li><strong>Empty mempool?</strong> Add transactions before mining.</li>
           <li><strong>DB locked on Linux?</strong> Use separate terminals; SQLite has file-level locking.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Limitations & Future Work</h2>
+      <div class="box p-4">
+        <ul class="list-disc pl-6">
+          <li><strong>Signatures & identity.</strong> Introduce digital signatures (e.g., secp256k1) to authenticate transaction authors.</li>
+          <li><strong>Fork choice.</strong> Implement longest-chain, GHOST, or similar rules for conflict resolution.</li>
+          <li><strong>Networking.</strong> Replace ad-hoc HTTP with a gossip protocol and peer discovery.</li>
+          <li><strong>Economic layer.</strong> Add fees/rewards and basic accounting to study incentive compatibility.</li>
+          <li><strong>Storage pruning.</strong> Support snapshotting or pruning for long-running chains.</li>
         </ul>
       </div>
     </section>
