@@ -1,6 +1,6 @@
-# NodeChain (Fastify + SQLite)
+# NodeChain — Backend Blockchain Terdesentralisasi (Fastify + SQLite)
 
-Simulasi blockchain ringan (mirip thread) berbasis Node.js, Fastify, SQLite, dan Swagger.
+Platform backend terdesentralisasi berbasis blockchain menggunakan Node.js, Fastify, SQLite, dan Swagger.
 
 ## Fitur
 - PoW sederhana (prefix 0000)
@@ -80,6 +80,6 @@ Swagger UI:
 - GET `/search?q=` (mendukung `#hashtag`)
 
 ## Catatan
-- Ini adalah simulasi edukasi, bukan untuk produksi.
-- Tidak ada entri point pusat: setiap node self-contained dan setara.
-- Database SQLite akan dibuat per node di jalur yang dikonfigurasi (lihat `nodeX/node.config.json`).
+- Ini adalah platform blockchain-backend minimal yang berjalan nyata per-node (tanpa entri point pusat).
+- Setiap node bersifat self-contained dan setara; komunikasi dilakukan via gossip dan anti-entropy sync.
+- Database SQLite dibuat per node di jalur yang dikonfigurasi (lihat `nodeX/node.config.json`).
