@@ -3,7 +3,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { openDatabase, addTx, getMempool, getBlocksFrom, getChain, addBlock, getUser, getUserPosts, getTimeline, searchPosts } from './db.js';
 import { ensureGenesis, mineBlock, isValidNewBlock } from './blockchain.js';
-import { broadcastBlock, fetchBlocksFrom, broadcastTx } from './p2p.js';
+import { broadcastBlock, fetchBlocksFrom, broadcastTx, isEnvelope, fetchPeerList, exchangePeers } from './p2p.js';
 import crypto from 'node:crypto';
 import { TXK, makeTx } from './types.js';
 import { backfillChain, applyBlock } from './projection.js';
@@ -28,6 +28,10 @@ export async function createServer(config) {
   app.decorate('difficulty', config.difficulty || 4);
   app.decorate('seenTx', new Set());
   app.decorate('seenBlocks', new Set());
+  app.decorate('seenMsgs', new Set()); // for gossip envelopes (mid)
+  app.decorate('self', config.self || `http://localhost:${config.port}`);
+  app.decorate('gossipFanout', config.gossipFanout || 2);
+  app.decorate('gossipTTL', config.gossipTTL || 2);
 
   // anti-entropy sync loop
   const syncIntervalMs = config.syncIntervalMs || 10000;
@@ -35,6 +39,20 @@ export async function createServer(config) {
     try { await performSync(app); } catch {}
   }, syncIntervalMs);
   app.addHook('onClose', async () => clearInterval(interval));
+
+  // periodic peer exchange to grow/refresh view
+  const peerXIntervalMs = config.peerExchangeIntervalMs || 20000;
+  const peerInterval = setInterval(async () => {
+    for (const p of app.peers) {
+      try {
+        const theirs = await fetchPeerList(p);
+        for (const x of theirs) if (x !== app.self) app.peers.add(x);
+        const returned = await exchangePeers(p, [...app.peers]);
+        for (const x of returned) if (x !== app.self) app.peers.add(x);
+      } catch {}
+    }
+  }, peerXIntervalMs);
+  app.addHook('onClose', async () => clearInterval(peerInterval));
 
   app.get('/health', {
     schema: { summary: 'Health check', response: { 200: { type: 'object', properties: { ok: { type: 'boolean' } } } } }
@@ -67,7 +85,7 @@ export async function createServer(config) {
     const tx = { id, from, to, content, timestamp: Date.now() };
     await addTx(db, tx);
     app.seenTx.add(id);
-    await broadcastTx([...app.peers], tx);
+    await broadcastTx([...app.peers], tx, { fanout: app.gossipFanout, ttl: app.gossipTTL, mid: id, sender: app.self });
     return { ok: true, id };
   });
 
@@ -92,7 +110,7 @@ export async function createServer(config) {
     if (!ok) return reply.code(400).send({ ok: false, error: 'invalid signature' });
     await addTx(db, core);
     app.seenTx.add(core.id);
-    await broadcastTx([...app.peers], core);
+    await broadcastTx([...app.peers], core, { fanout: app.gossipFanout, ttl: app.gossipTTL, mid: core.id, sender: app.self });
     return { ok: true };
   });
 
@@ -101,7 +119,7 @@ export async function createServer(config) {
     if (result.mined) {
       await applyBlock(db, result.block);
       app.seenBlocks.add(result.block.hash);
-      await broadcastBlock([...app.peers], result.block);
+      await broadcastBlock([...app.peers], result.block, { fanout: app.gossipFanout, ttl: app.gossipTTL, mid: result.block.hash, sender: app.self });
     }
     return result;
   });
@@ -112,6 +130,12 @@ export async function createServer(config) {
     const { url } = req.body;
     app.peers.add(url);
     return { ok: true };
+  });
+
+  app.post('/peers/exchange', { schema: { summary: 'Peer exchange (return my peers and merge yours)', body: { type: 'object', properties: { peers: { type: 'array', items: { type: 'string' } } } }, response: { 200: { type: 'object' } } } }, async (req) => {
+    const incoming = Array.isArray(req.body?.peers) ? req.body.peers : [];
+    for (const p of incoming) if (p !== app.self) app.peers.add(p);
+    return { ok: true, peers: [...app.peers] };
   });
 
   app.get('/blocks', { schema: { summary: 'Get blocks from height (peer sync)', querystring: { type: 'object', properties: { fromHeight: { type: 'integer', default: 0 } } }, response: { 200: { type: 'object', properties: { blocks: { type: 'array' } } } } } }, async (req) => {
@@ -154,28 +178,56 @@ export async function createServer(config) {
   });
 
   // Gossip endpoints
-  app.post('/gossip/tx', { schema: { summary: 'Receive gossiped transaction', body: { type: 'object' }, response: { 200: { type: 'object' } } } }, async (req, reply) => {
-    const tx = req.body;
-    if (!tx || !tx.id) return reply.code(400).send({ ok: false, error: 'bad tx' });
-    if (app.seenTx.has(tx.id)) return { ok: true, duplicate: true };
-    await addTx(db, tx);
-    app.seenTx.add(tx.id);
-    await broadcastTx([...app.peers], tx);
-    return { ok: true };
+  app.post('/gossip/tx', { schema: { summary: 'Receive gossiped transaction or envelope', body: { type: 'object' }, response: { 200: { type: 'object' } } } }, async (req, reply) => {
+    const body = req.body;
+    if (isEnvelope(body)) {
+      const { d: tx, ttl, mid } = body;
+      if (!tx || !tx.id) return reply.code(400).send({ ok: false, error: 'bad tx' });
+      if (app.seenMsgs.has(mid)) return { ok: true, duplicate: true };
+      await addTx(db, tx);
+      app.seenMsgs.add(mid);
+      app.seenTx.add(tx.id);
+      if (ttl > 1) await broadcastTx([...app.peers], tx, { fanout: app.gossipFanout, ttl: ttl - 1, mid, sender: app.self });
+      return { ok: true };
+    } else {
+      const tx = body;
+      if (!tx || !tx.id) return reply.code(400).send({ ok: false, error: 'bad tx' });
+      if (app.seenTx.has(tx.id)) return { ok: true, duplicate: true };
+      await addTx(db, tx);
+      app.seenTx.add(tx.id);
+      await broadcastTx([...app.peers], tx, { fanout: app.gossipFanout, ttl: app.gossipTTL, mid: tx.id, sender: app.self });
+      return { ok: true };
+    }
   });
 
-  app.post('/gossip/block', { schema: { summary: 'Receive gossiped block', body: { type: 'object' }, response: { 200: { type: 'object' } } } }, async (req, reply) => {
-    const block = req.body;
-    if (!block || !block.hash) return reply.code(400).send({ ok: false, error: 'bad block' });
-    if (app.seenBlocks.has(block.hash)) return { ok: true, duplicate: true };
-    const chain = await getChain(db);
-    const prev = chain[chain.length - 1];
-    if (!isValidNewBlock(prev, block)) return reply.code(400).send({ ok: false, error: 'invalid block' });
-    await addBlock(db, block);
-    await applyBlock(db, block);
-    app.seenBlocks.add(block.hash);
-    await broadcastBlock([...app.peers], block);
-    return { ok: true };
+  app.post('/gossip/block', { schema: { summary: 'Receive gossiped block or envelope', body: { type: 'object' }, response: { 200: { type: 'object' } } } }, async (req, reply) => {
+    const body = req.body;
+    if (isEnvelope(body)) {
+      const { d: block, ttl, mid } = body;
+      if (!block || !block.hash) return reply.code(400).send({ ok: false, error: 'bad block' });
+      if (app.seenMsgs.has(mid)) return { ok: true, duplicate: true };
+      const chain = await getChain(db);
+      const prev = chain[chain.length - 1];
+      if (!isValidNewBlock(prev, block)) return reply.code(400).send({ ok: false, error: 'invalid block' });
+      await addBlock(db, block);
+      await applyBlock(db, block);
+      app.seenMsgs.add(mid);
+      app.seenBlocks.add(block.hash);
+      if (ttl > 1) await broadcastBlock([...app.peers], block, { fanout: app.gossipFanout, ttl: ttl - 1, mid, sender: app.self });
+      return { ok: true };
+    } else {
+      const block = body;
+      if (!block || !block.hash) return reply.code(400).send({ ok: false, error: 'bad block' });
+      if (app.seenBlocks.has(block.hash)) return { ok: true, duplicate: true };
+      const chain = await getChain(db);
+      const prev = chain[chain.length - 1];
+      if (!isValidNewBlock(prev, block)) return reply.code(400).send({ ok: false, error: 'invalid block' });
+      await addBlock(db, block);
+      await applyBlock(db, block);
+      app.seenBlocks.add(block.hash);
+      await broadcastBlock([...app.peers], block, { fanout: app.gossipFanout, ttl: app.gossipTTL, mid: block.hash, sender: app.self });
+      return { ok: true };
+    }
   });
 
   app.get('/', { schema: { summary: 'Docs redirect' } }, async (req, reply) => { reply.redirect('/docs'); });
