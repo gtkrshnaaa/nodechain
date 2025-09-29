@@ -3,26 +3,38 @@
 Simulasi blockchain ringan (mirip thread) berbasis Node.js, Fastify, SQLite, dan Swagger.
 
 ## Fitur
-- Block + PoW sederhana (prefix 0000)
-- Mempool transaksi ("thread message")
+- PoW sederhana (prefix 0000)
+- Mempool transaksi ("thread/message")
 - Mining block dari mempool
-- Sync sederhana antar peer (HTTP)
-- Swagger UI di `/docs`
+- Gossip P2P untuk block dan transaksi (tanpa entri point pusat)
+- Anti-entropy sync periodik antar peer
+- Transaksi bertanda tangan opsional (Ed25519)
+- Fitur sosial: users, posts, replies, follows, likes, timeline, search (#hashtag)
+- Swagger UI per node di `/docs`
 
-## Struktur
+## Struktur (tanpa pusat, per-node)
 ```
-shared/
+node1/
+  index.js
+  server.js
   util.js
   db.js
   blockchain.js
   p2p.js
-src/
-  createServer.js
-node1/
-  index.js
+  projection.js
+  types.js
+  crypto.js
   node.config.json
 node2/
   index.js
+  server.js
+  util.js
+  db.js
+  blockchain.js
+  p2p.js
+  projection.js
+  types.js
+  crypto.js
   node.config.json
 ```
 
@@ -41,18 +53,33 @@ Swagger UI:
 - Node1: http://localhost:3001/docs
 - Node2: http://localhost:3002/docs
 
-## API ringkas
+## API ringkas (inti)
 - GET `/health`
 - GET `/chain`
 - GET `/mempool`
-- POST `/tx` { from, to, content }
+- POST `/tx` { from, to, content } — akan di-gossip ke peers
+- POST `/tx/signed` { id, from, to, content, timestamp, pubkey, signature }
 - POST `/mine`
 - GET `/peers`
 - POST `/peers` { url }
 - GET `/blocks?fromHeight=N`
-- POST `/receive-block` (internal peer)
+- POST `/receive-block` (opsi kompatibilitas)
 - POST `/sync`
+- POST `/gossip/tx`
+- POST `/gossip/block`
+
+## API ringkas (sosial)
+- POST `/users/register` { handle, displayName?, pubkey? }
+- GET `/users/:handle`
+- POST `/post` { author, text, tags? }
+- POST `/reply` { author, text, parentId }
+- POST `/follow` { follower, followee }
+- POST `/like` { liker, postId }
+- GET `/timeline/:handle` (limit?, offset?)
+- GET `/user/:handle/posts` (limit?, offset?)
+- GET `/search?q=` (mendukung `#hashtag`)
 
 ## Catatan
 - Ini adalah simulasi edukasi, bukan untuk produksi.
-- Database SQLite akan dibuat di `data/` percabang node.
+- Tidak ada entri point pusat: setiap node self-contained dan setara.
+- Database SQLite akan dibuat per node di jalur yang dikonfigurasi (lihat `nodeX/node.config.json`).

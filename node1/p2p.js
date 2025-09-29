@@ -1,10 +1,10 @@
 import { request } from 'undici';
 
-// Broadcast a block to peers via HTTP
+// Broadcast a block to peers via HTTP gossip
 export async function broadcastBlock(peers, block) {
   const results = await Promise.allSettled(
     peers.map(async (p) => {
-      const url = `${p}/receive-block`;
+      const url = `${p}/gossip/block`;
       try {
         await request(url, {
           method: 'POST',
@@ -26,4 +26,24 @@ export async function fetchBlocksFrom(peer, fromHeight) {
   if (res.statusCode !== 200) throw new Error(`Peer ${peer} returned ${res.statusCode}`);
   const data = await res.body.json();
   return data.blocks;
+}
+
+// Broadcast a transaction to peers via HTTP gossip
+export async function broadcastTx(peers, tx) {
+  const results = await Promise.allSettled(
+    peers.map(async (p) => {
+      const url = `${p}/gossip/tx`;
+      try {
+        await request(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(tx)
+        });
+        return { peer: p, ok: true };
+      } catch (e) {
+        return { peer: p, ok: false, error: e.message };
+      }
+    })
+  );
+  return results;
 }

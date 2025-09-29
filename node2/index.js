@@ -1,4 +1,4 @@
-import { createServer } from '../src/createServer.js';
+import { createServer } from './server.js';
 import config from './node.config.json' assert { type: 'json' };
 
 const app = await createServer(config);

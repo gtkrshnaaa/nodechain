@@ -15,7 +15,6 @@ function extractTags(text) {
 
 // Apply one tx into social projection tables
 async function applyTx(db, tx, blockIndex) {
-  // tx.content can be plain text (legacy) or JSON string {kind, author, payload}
   let parsed;
   try { parsed = JSON.parse(tx.content); } catch { parsed = null; }
 
@@ -73,7 +72,6 @@ async function applyTx(db, tx, blockIndex) {
       break;
     }
     default: {
-      // Unknown kind: ignore
       break;
     }
   }

@@ -36,24 +36,34 @@
           <li><strong>Swagger UI</strong> served at <span class="mono">/docs</span> for each node.</li>
           <li><strong>P2P (HTTP)</strong> for broadcasting and syncing blocks between nodes.</li>
         </ul>
+        <p class="mt-3"><strong>Decentralization model.</strong> There is no central entry point. Each node is self-contained and equivalent, holding its own database and API surface, and communicating via gossip and periodic anti-entropy sync.</p>
       </div>
     </section>
 
     <section class="mb-10">
       <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Project Layout</h2>
-      <pre class="box p-4 overflow-auto text-sm mono">shared/
-  util.js          # hash (sha256), PoW mining helper, time utils
-  db.js            # sqlite schema + queries (blocks, mempool)
-  blockchain.js    # genesis, mining, block validation
-  p2p.js           # simple HTTP broadcast + sync helpers
-src/
-  createServer.js  # Fastify server, routes, swagger setup
-node1/
+      <pre class="box p-4 overflow-auto text-sm mono">node1/
   index.js         # entry for node1
+  server.js        # Fastify server + routes + gossip
+  util.js          # hash, PoW, time utils
+  db.js            # sqlite schema + queries (blocks, mempool, social)
+  blockchain.js    # genesis, mining, block validation
+  p2p.js           # HTTP gossip + sync helpers
+  projection.js    # apply blocks to social tables
+  types.js         # social tx enums
+  crypto.js        # canonical hash/signature verify (Ed25519)
   node.config.json # config (port, db path, peers)
 node2/
-  index.js         # entry for node2
-  node.config.json # config (port, db path, peers)
+  index.js
+  server.js
+  util.js
+  db.js
+  blockchain.js
+  p2p.js
+  projection.js
+  types.js
+  crypto.js
+  node.config.json
 README.md
 index.html         # this documentation
 package.json
@@ -136,13 +146,16 @@ package.json
             <tr><td class="mono">GET</td><td class="mono">/health</td><td>Health check.</td></tr>
             <tr><td class="mono">GET</td><td class="mono">/chain</td><td>Full chain.</td></tr>
             <tr><td class="mono">GET</td><td class="mono">/mempool</td><td>Current mempool transactions.</td></tr>
-            <tr><td class="mono">POST</td><td class="mono">/tx</td><td>Add a transaction: <span class="mono">{ from, to, content }</span>.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/tx</td><td>Add a transaction: <span class="mono">{ from, to, content }</span>. Will be gossiped to peers.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/tx/signed</td><td>Submit signed tx: <span class="mono">{ id, from, to, content, timestamp, pubkey, signature }</span>.</td></tr>
             <tr><td class="mono">POST</td><td class="mono">/mine</td><td>Mine a block from mempool, broadcast to peers.</td></tr>
             <tr><td class="mono">GET</td><td class="mono">/peers</td><td>List peers.</td></tr>
             <tr><td class="mono">POST</td><td class="mono">/peers</td><td>Add peer: <span class="mono">{ url }</span>.</td></tr>
             <tr><td class="mono">GET</td><td class="mono">/blocks?fromHeight=N</td><td>Get blocks after N (for peer sync).</td></tr>
-            <tr><td class="mono">POST</td><td class="mono">/receive-block</td><td>Internal: accept a new block from a peer.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/receive-block</td><td>Compatibility path to accept a block.</td></tr>
             <tr><td class="mono">POST</td><td class="mono">/sync</td><td>Pull missing blocks from peers.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/gossip/tx</td><td>Receive gossiped transaction, re-gossip if unseen.</td></tr>
+            <tr><td class="mono">POST</td><td class="mono">/gossip/block</td><td>Receive gossiped block, validate, re-gossip if valid.</td></tr>
           </tbody>
         </table>
         <div class="mt-4">
@@ -242,9 +255,9 @@ timestamp INTEGER</pre>
       <h2 class="text-2xl font-semibold mono section-title pb-1 mb-4">Networking Protocol</h2>
       <div class="box p-4">
         <ul class="list-disc pl-6">
-          <li><strong>Broadcast path.</strong> After mining, a node POSTs the full block JSON to peers' <span class="mono">/receive-block</span>. Peers validate before persisting.</li>
-          <li><strong>Pull-based sync.</strong> Nodes can request ranges via <span class="mono">GET /blocks?fromHeight=N</span>. This is used by <span class="mono">POST /sync</span> to catch up opportunistically.</li>
-          <li><strong>Peer management.</strong> Peers are configured statically at startup (and can be added at runtime). There is no discovery or gossip protocol.</li>
+          <li><strong>Gossip broadcast.</strong> After mining, a node POSTs the full block JSON to peers' <span class="mono">/gossip/block</span>. Peers validate and re-gossip if the block is new.</li>
+          <li><strong>Pull-based sync.</strong> Nodes can request ranges via <span class="mono">GET /blocks?fromHeight=N</span>. This is used by <span class="mono">POST /sync</span> and periodic anti-entropy.</li>
+          <li><strong>Peer management.</strong> Peers are configured statically at startup (and can be added at runtime). No central discovery is required.</li>
         </ul>
       </div>
     </section>
@@ -299,11 +312,10 @@ timestamp INTEGER</pre>
         <div class="box p-4">
           <h3 class="font-semibold mono mb-2">Source Files</h3>
           <ul class="list-disc pl-6">
-            <li><span class="mono">src/createServer.js</span></li>
-            <li><span class="mono">shared/blockchain.js</span></li>
-            <li><span class="mono">shared/db.js</span></li>
-            <li><span class="mono">shared/p2p.js</span></li>
-            <li><span class="mono">shared/util.js</span></li>
+            <li><span class="mono">node1/server.js</span> (mirrored in <span class="mono">node2/server.js</span>)</li>
+            <li><span class="mono">node1/db.js</span>, <span class="mono">node1/blockchain.js</span>, <span class="mono">node1/p2p.js</span></li>
+            <li><span class="mono">node1/projection.js</span>, <span class="mono">node1/types.js</span>, <span class="mono">node1/crypto.js</span>, <span class="mono">node1/util.js</span></li>
+            <li>The same structure exists under <span class="mono">node2/</span>.</li>
           </ul>
         </div>
       </div>
