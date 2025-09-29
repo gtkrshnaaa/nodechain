@@ -196,3 +196,96 @@ curl -X POST http://localhost:3001/tx/signed -H 'content-type: application/json'
 - **Follow/Like** — Social relations stored as projection rows.
 - **Envelope** — Gossip wrapper with `ttl`/`mid` for controlled spread.
 - **Projection** — Deterministic SQL mutation from block txs.
+
+---
+
+## 13. Architecture & Gossip (Mermaid)
+```mermaid
+sequenceDiagram
+  actor Client
+  participant N1 as Node A
+  participant N2 as Node B
+  participant N3 as Node C
+  Client->>N1: POST /pollen {author,text}
+  N1->>N1: enqueue tx (mempool)
+  N1-->>N2: gossip tx (ttl-1)
+  N1-->>N3: gossip tx (ttl-1)
+  N2->>N2: mempool add (dedup mid)
+  N3->>N3: mempool add (dedup mid)
+  Note over N2,N3: Optional re-gossip to random peers until ttl==1
+  N2->>N2: mine block (PoW 0000)
+  N2-->>N1: gossip block (ttl-1)
+  N2-->>N3: gossip block (ttl-1)
+  N1->>N1: validate+apply block → projections
+  N3->>N3: validate+apply block → projections
+```
+
+---
+
+## 14. Advanced Examples
+
+### 14.1 Reply and Like
+```bash
+# reply to an existing pollen (id=POL123)
+curl -X POST http://localhost:3001/pollen/reply \
+  -H 'content-type: application/json' \
+  -d '{"author":"alice","text":"@bob thanks!","parentId":"POL123"}'
+
+# like a pollen
+curl -X POST http://localhost:3002/like \
+  -H 'content-type: application/json' \
+  -d '{"liker":"bob","postId":"POL123"}'
+
+# mine to seal the actions
+curl -X POST http://localhost:3002/mine
+```
+
+### 14.2 Search by hashtag
+```bash
+curl 'http://localhost:3001/search?q=%23pollen'
+```
+
+### 14.3 Pagination on timeline and pollens
+```bash
+# timeline
+curl 'http://localhost:3002/timeline/bob?limit=10&offset=0'
+curl 'http://localhost:3002/timeline/bob?limit=10&offset=10'
+
+# list a user's pollens
+curl 'http://localhost:3001/user/alice/pollens?limit=5&offset=0'
+curl 'http://localhost:3001/user/alice/pollens?limit=5&offset=5'
+```
+
+---
+
+## 15. Config Presets
+
+### 15.1 Small Dev Mesh (2–5 nodes)
+```json
+{
+  "port": 3001,
+  "dbPath": "data/node1.sqlite",
+  "difficulty": 4,
+  "peers": ["http://localhost:3002"],
+  "self": "http://localhost:3001",
+  "gossipFanout": 2,
+  "gossipTTL": 2,
+  "syncIntervalMs": 10000,
+  "peerExchangeIntervalMs": 20000
+}
+```
+
+### 15.2 Wider Mesh (10–50 nodes)
+```json
+{
+  "port": 3001,
+  "dbPath": "data/node1.sqlite",
+  "difficulty": 4,
+  "peers": ["http://hostA:3001","http://hostB:3001"],
+  "self": "http://myhost:3001",
+  "gossipFanout": 3,
+  "gossipTTL": 3,
+  "syncIntervalMs": 8000,
+  "peerExchangeIntervalMs": 15000
+}
+```
